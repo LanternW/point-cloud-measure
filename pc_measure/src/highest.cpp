@@ -24,7 +24,7 @@
 #define PI 3.141592653589
 using namespace std;
 ros::Subscriber livox_lidar_sub;
-ros::Publisher  height_pc_pub ,filtered_pc_pub ,rotated_pc_pub, target_pub;
+ros::Publisher  height_pc_pub ,filtered_pc_pub ,rotated_pc_pub, plane_pc_pub, target_pub;
 pcl::PointXYZ highest_point;
 
 double max_distance_multi = 0;
@@ -36,6 +36,8 @@ double min_distance , min_lidar_distance ;
 int frame_tick;
 int neighbor_points;
 double threshold;
+double max_target_height;
+double d_width;
 bool debug_mode;
 
 vector<double> tem_x(10);
@@ -51,15 +53,19 @@ void initParams(ros::NodeHandle& n)
     if(!n.getParam("/highest_pc_node/frame_tick", frame_tick)){ ROS_ERROR("Failed to get parameter from server."); }
     if(!n.getParam("/highest_pc_node/filter_neighbor_points", neighbor_points)){ ROS_ERROR("Failed to get parameter from server."); }
     if(!n.getParam("/highest_pc_node/filter_threshold", threshold)){ ROS_ERROR("Failed to get parameter from server."); }
-    if(!n.getParam("/highest_pc_node/filter_threshold", threshold)){ ROS_ERROR("Failed to get parameter from server."); }
+    if(!n.getParam("/highest_pc_node/max_target_height", max_target_height)){ ROS_ERROR("Failed to get parameter from server."); }
+    if(!n.getParam("/highest_pc_node/d_width", d_width)){ ROS_ERROR("Failed to get parameter from server."); }
     if(!n.getParam("/highest_pc_node/debug_mode", debug_mode)){ ROS_ERROR("Failed to get parameter from server."); }
 
     cout << "load params successfully as: \n";
     cout << "check_cloud : " << lidar_topic << "\n\n min_distance : " << min_distance << "\n\n min_lidar_distance : " << min_lidar_distance << endl;
     cout << "frame_tick : " << frame_tick << "filter_neighbor_points : " << neighbor_points << "filter_threshold : " << threshold <<endl;
+    cout << "d_width : " << d_width <<endl;
+    cout << "max_target_height : " << max_target_height << "\n\n" << "debug_mode : " << debug_mode << endl;
     
     ROS_INFO("\n====highest point detect node init====\n");
 }
+
 
 double eu_distance(double x , double y , double z) {
     return sqrt(x*x + y*y + z*z);
@@ -102,7 +108,9 @@ void pointCloudCallback(const sensor_msgs::PointCloud2::ConstPtr& pc_now) {
     //统计滤波
     pcl::StatisticalOutlierRemoval<pcl::PointXYZ> sor;   //创建滤波器对象
     pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_filtered (new pcl::PointCloud<pcl::PointXYZ>);
+    
     sor.setInputCloud (pc_raw);                           //设置待滤波的点云
+
     sor.setMeanK (neighbor_points);                               //设置在进行统计时考虑查询点临近点数
     sor.setStddevMulThresh (threshold);                      //设置判断是否为离群点的阀值
     sor.filter (*cloud_filtered);                    //存储
@@ -122,6 +130,7 @@ void pointCloudCallback(const sensor_msgs::PointCloud2::ConstPtr& pc_now) {
 
         if(  eu_distance(cloud_filtered -> points[i].x,    cloud_filtered -> points[i].y,    cloud_filtered -> points[i].z) < min_lidar_distance){continue;}
         distance = abs(A*cloud_filtered -> points[i].x + B*cloud_filtered -> points[i].y + C*cloud_filtered -> points[i].z + D) / d;
+        if (distance > max_target_height) {continue;}
         if (distance > maxdistance) { maxdistance = distance ; index = i;}
     }
 
@@ -134,12 +143,15 @@ void pointCloudCallback(const sensor_msgs::PointCloud2::ConstPtr& pc_now) {
 
     if (debug_mode) {
         pcl::transformPointCloud(*cloud_filtered , *cloud_rotated , transform);
-        sensor_msgs::PointCloud2 output_pc_rotated, output_pc_filtered;
+        sensor_msgs::PointCloud2 output_pc_rotated, output_pc_filtered ,output_pc_plane;
         pcl::toROSMsg(*cloud_rotated , output_pc_rotated);
+        pcl::toROSMsg(*cloud_plane , output_pc_plane);
         pcl::toROSMsg(*cloud_filtered , output_pc_filtered);
         output_pc_rotated.header.frame_id = "livox_frame";
+        output_pc_plane.header.frame_id = "livox_frame";
         output_pc_filtered.header.frame_id = "livox_frame";
         filtered_pc_pub.publish(output_pc_filtered);
+        plane_pc_pub.publish(output_pc_plane);
         rotated_pc_pub.publish(output_pc_rotated);
     }
 
@@ -151,17 +163,18 @@ void pointCloudCallback(const sensor_msgs::PointCloud2::ConstPtr& pc_now) {
         return ;
     
     }
-    if ( maxdistance > max_distance_multi - 0.2 || total_frame > frame_tick){
+    if ( maxdistance > max_distance_multi - 0.1 || total_frame > frame_tick){
         total_frame = 0;
         max_distance_multi = maxdistance;
         pcl::PointXYZ last_highest_point = highest_point;
         highest_point = cloud_filtered -> points[index];
 
         //过滤钢轨差异
-        if (fabs(last_highest_point.x - highest_point.x) < 0.3 && fabs(last_highest_point.y - highest_point.y) < 0.3) { 
+        if (fabs(last_highest_point.x - highest_point.x) < d_width && fabs(last_highest_point.y - highest_point.y) < d_width) { 
 
             tem_x.push_back(highest_point.x);
             tem_y.push_back(highest_point.y);
+            cout <<" tem_x.length = " << tem_x.size() << " | tem_y.length = "<< tem_y.size() <<endl;
             double sum_x = accumulate(begin(tem_x), end(tem_x), 0.0);  
             double mean_x =  sum_x / tem_x.size(); //均值
             double sum_y = accumulate(begin(tem_y), end(tem_y), 0.0);  
@@ -225,6 +238,9 @@ int main(int argc, char** argv)
     
     rotated_pc_pub = 
         nh.advertise<sensor_msgs::PointCloud2>("/rotated_point_cloud", 1000); 
+
+    plane_pc_pub = 
+        nh.advertise<sensor_msgs::PointCloud2>("/plane_point_cloud", 1000); 
     
     target_pub = 
         nh.advertise<geometry_msgs::Twist>("/target", 1000); 
