@@ -50,5 +50,8 @@ max_target_height : 3.0
 # 钢轨宽度
 d_width : 0.4
 
+# 距离测量方式 （ false - 使用雷达点云拟合平面 ； true - 使用飞机imu直接读取姿态 ）
+detect_mode : false
+
 # 开启测试模式，会输出便于调试的中间结果，但是会额外占用性能
 debug_mode : true

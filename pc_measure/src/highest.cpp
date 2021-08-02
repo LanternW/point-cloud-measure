@@ -38,6 +38,7 @@ int neighbor_points;
 double threshold;
 double max_target_height;
 double d_width;
+bool detect_mode;
 bool debug_mode;
 
 vector<double> tem_x(10);
@@ -56,12 +57,13 @@ void initParams(ros::NodeHandle& n)
     if(!n.getParam("/highest_pc_node/max_target_height", max_target_height)){ ROS_ERROR("Failed to get parameter from server."); }
     if(!n.getParam("/highest_pc_node/d_width", d_width)){ ROS_ERROR("Failed to get parameter from server."); }
     if(!n.getParam("/highest_pc_node/debug_mode", debug_mode)){ ROS_ERROR("Failed to get parameter from server."); }
+    if(!n.getParam("/highest_pc_node/detect_mode", detect_mode)){ ROS_ERROR("Failed to get parameter from server."); }
 
     cout << "load params successfully as: \n";
     cout << "check_cloud : " << lidar_topic << "\n\n min_distance : " << min_distance << "\n\n min_lidar_distance : " << min_lidar_distance << endl;
     cout << "frame_tick : " << frame_tick << "filter_neighbor_points : " << neighbor_points << "filter_threshold : " << threshold <<endl;
     cout << "d_width : " << d_width <<endl;
-    cout << "max_target_height : " << max_target_height << "\n\n" << "debug_mode : " << debug_mode << endl;
+    cout << "max_target_height : " << max_target_height << "\n\n" << "debug_mode : " << debug_mode << "\ndetect_mode: " << detect_mode << endl;
     
     ROS_INFO("\n====highest point detect node init====\n");
 }
@@ -77,8 +79,13 @@ void pointCloudCallback(const sensor_msgs::PointCloud2::ConstPtr& pc_now) {
     pcl::PointIndices::Ptr inliers (new pcl::PointIndices);
 
     pcl::PointCloud<pcl::PointXYZ>::Ptr pc_raw (new pcl::PointCloud<pcl::PointXYZ>);
+    pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_plane (new pcl::PointCloud<pcl::PointXYZ>);
     pcl::fromROSMsg( *pc_now, *pc_raw );
     geometry_msgs::Twist target;
+
+
+    double maxdistance = 0 , index = 0;
+    double distance = 0;
 
     /*
     Eigen::Matrix4f transform_pre = Eigen::Matrix4f::Identity();
@@ -98,7 +105,6 @@ void pointCloudCallback(const sensor_msgs::PointCloud2::ConstPtr& pc_now) {
 
     // 把平面内点提取到一个新的点云中
     if(debug_mode) {
-        pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_plane (new pcl::PointCloud<pcl::PointXYZ>);
         pcl::ExtractIndices<pcl::PointXYZ> ex ;
         ex.setInputCloud(pc_raw);
         ex.setIndices(inliers);
@@ -121,8 +127,6 @@ void pointCloudCallback(const sensor_msgs::PointCloud2::ConstPtr& pc_now) {
     float D = coefficients -> values[3];
     double d = sqrt(A*A + B*B + C*C);
     double theta = acos(fabs(C));
-    double maxdistance = 0 , index = 0;
-    double distance = 0;
 
     theta = PI - theta;
     //cout<<"theta = "<< (theta * 180 / PI)<<endl;
