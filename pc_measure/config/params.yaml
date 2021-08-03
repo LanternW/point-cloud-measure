@@ -29,10 +29,8 @@ check_cloud : /livox/lidar
 # 如果使用以下参数，表示使用筛选后的点云进行最高点检测
 #check_cloud : /roi_point_cloud
 
-# 轨条最高点至少离“地面”的距离（过滤灌木丛）
-min_distance : 1.3
 
-# 轨条最高点至少离雷达的距离，用于过滤噪声
+# 轨条最高点至少离雷达的距离，用于过滤原点噪声
 min_lidar_distance : 0.2
 
 # 发布一次数据时融合的帧数（扫到目标的点云很稀疏，则适当提高此数值）
@@ -44,11 +42,17 @@ filter_neighbor_points : 5
 # 统计滤波离群点阈值
 filter_threshold : 2.0
 
+# 轨条最高点至少离“地面”的距离（过滤灌木丛等）
+min_distance : 1.3
+
 # 最高目标点高度
 max_target_height : 3.0
 
 # 钢轨宽度
-d_width : 0.4
+d_width : 0.3
+
+# 用于均值滤波的容器大小
+vector_length : 10
 
 # 距离测量方式 （ false - 使用雷达点云拟合平面 ； true - 使用飞机imu直接读取姿态 ）
 detect_mode : false

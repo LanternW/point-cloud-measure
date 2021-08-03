@@ -38,11 +38,12 @@ int neighbor_points;
 double threshold;
 double max_target_height;
 double d_width;
+double vector_length;
 bool detect_mode;
 bool debug_mode;
 
-vector<double> tem_x(10);
-vector<double> tem_y(10);
+vector<double> tem_x;
+vector<double> tem_y;
 
 
 void initParams(ros::NodeHandle& n)
@@ -56,13 +57,14 @@ void initParams(ros::NodeHandle& n)
     if(!n.getParam("/highest_pc_node/filter_threshold", threshold)){ ROS_ERROR("Failed to get parameter from server."); }
     if(!n.getParam("/highest_pc_node/max_target_height", max_target_height)){ ROS_ERROR("Failed to get parameter from server."); }
     if(!n.getParam("/highest_pc_node/d_width", d_width)){ ROS_ERROR("Failed to get parameter from server."); }
+    if(!n.getParam("/highest_pc_node/vector_length", vector_length)){ ROS_ERROR("Failed to get parameter from server."); }
     if(!n.getParam("/highest_pc_node/debug_mode", debug_mode)){ ROS_ERROR("Failed to get parameter from server."); }
     if(!n.getParam("/highest_pc_node/detect_mode", detect_mode)){ ROS_ERROR("Failed to get parameter from server."); }
 
     cout << "load params successfully as: \n";
     cout << "check_cloud : " << lidar_topic << "\n\n min_distance : " << min_distance << "\n\n min_lidar_distance : " << min_lidar_distance << endl;
     cout << "frame_tick : " << frame_tick << "filter_neighbor_points : " << neighbor_points << "filter_threshold : " << threshold <<endl;
-    cout << "d_width : " << d_width <<endl;
+    cout << "d_width : " << d_width << "\n vector_length : " << vector_length <<endl;
     cout << "max_target_height : " << max_target_height << "\n\n" << "debug_mode : " << debug_mode << "\ndetect_mode: " << detect_mode << endl;
     
     ROS_INFO("\n====highest point detect node init====\n");
@@ -167,29 +169,12 @@ void pointCloudCallback(const sensor_msgs::PointCloud2::ConstPtr& pc_now) {
         return ;
     
     }
+    
+    pcl::PointXYZ last_highest_point = highest_point;
     if ( maxdistance > max_distance_multi - 0.1 || total_frame > frame_tick){
         total_frame = 0;
         max_distance_multi = maxdistance;
-        pcl::PointXYZ last_highest_point = highest_point;
         highest_point = cloud_filtered -> points[index];
-
-        //过滤钢轨差异
-        if (fabs(last_highest_point.x - highest_point.x) < d_width && fabs(last_highest_point.y - highest_point.y) < d_width) { 
-
-            tem_x.push_back(highest_point.x);
-            tem_y.push_back(highest_point.y);
-            cout <<" tem_x.length = " << tem_x.size() << " | tem_y.length = "<< tem_y.size() <<endl;
-            double sum_x = accumulate(begin(tem_x), end(tem_x), 0.0);  
-            double mean_x =  sum_x / tem_x.size(); //均值
-            double sum_y = accumulate(begin(tem_y), end(tem_y), 0.0);  
-            double mean_y =  sum_y / tem_y.size(); //均值
-            highest_point.x = mean_x;
-            highest_point.y = mean_y;
-        }
-        else{
-            tem_x.clear();
-            tem_y.clear();
-        }
     }
 
     sensor_msgs::PointCloud2 output_pc ;
@@ -198,26 +183,56 @@ void pointCloudCallback(const sensor_msgs::PointCloud2::ConstPtr& pc_now) {
     total_frame++ ;
     //drone coordinate
         
-    Eigen::Vector4f hp_coor;
+    Eigen::Vector4f hp_coor, hp_coor_last;
     hp_coor << highest_point.x , highest_point.y , highest_point.z , 1;
+    hp_coor_last << last_highest_point.x , last_highest_point.y , last_highest_point.z , 1;
     Eigen::Vector4f hp_coor_d = transform * hp_coor;
+    Eigen::Vector4f hp_coor_d_last = transform * hp_coor_last;
     pcl::PointXYZ p_drone;
-    p_drone.x = hp_coor_d[0];
-    p_drone.y = hp_coor_d[1];
+
+
+    //滤钢轨差异
+    if (fabs(hp_coor_d_last[0] - hp_coor_d[0]) < d_width && fabs(hp_coor_d_last[1] - hp_coor_d[1]) < d_width) { 
+
+            
+        tem_x.push_back(hp_coor_d[0]);
+        tem_y.push_back(hp_coor_d[1]);
+        if (tem_x.size() > vector_length) {tem_x.erase(tem_x.begin());}
+        if (tem_y.size() > vector_length) {tem_y.erase(tem_y.begin());}
+
+
+        cout <<" tem_x.length = " << tem_x.size() << " | tem_y.length = "<< tem_y.size() <<endl;
+        double sum_x = accumulate(begin(tem_x), end(tem_x), 0.0);  
+        double mean_x =  sum_x / tem_x.size(); //均值
+        double sum_y = accumulate(begin(tem_y), end(tem_y), 0.0);  
+        double mean_y =  sum_y / tem_y.size(); //均值
+        p_drone.x = mean_x;
+        p_drone.y = mean_y;
+    }
+
+    else{
+        tem_x.clear();
+        tem_y.clear();
+        p_drone.x = hp_coor_d[0];
+        p_drone.y = hp_coor_d[1];
+    }
+
     p_drone.z = hp_coor_d[2];
+
     output_cloud -> push_back(p_drone);
 
     pcl::toROSMsg(*output_cloud , output_pc);
     output_pc.header.frame_id = "livox_frame";
 
     height_pc_pub.publish(output_pc);
-
+    
     target.linear.x = -p_drone.x;
     target.linear.y = -p_drone.y;
     target.linear.z = -p_drone.z;
     target.angular.x = 1;
 
     target_pub.publish(target);
+
 
     cout<<"\npublished!  dx="<< -p_drone.x <<" | dy="<< -p_drone.y <<" | dz=" << -p_drone.z <<endl;
 
