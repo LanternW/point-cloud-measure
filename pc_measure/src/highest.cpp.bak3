@@ -229,8 +229,10 @@ void pointCloudCallback(const sensor_msgs::PointCloud2::ConstPtr& pc_now) {
 
     //统计滤波
     pcl::StatisticalOutlierRemoval<pcl::PointXYZ> sor;   //创建滤波器对象
-    pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_filtered (new pcl::PointCloud<pcl::PointXYZ>);  
+    pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_filtered (new pcl::PointCloud<pcl::PointXYZ>);
+    
     sor.setInputCloud (pc_raw);                           //设置待滤波的点云
+
     sor.setMeanK (neighbor_points);                               //设置在进行统计时考虑查询点临近点数
     sor.setStddevMulThresh (threshold);                      //设置判断是否为离群点的阀值
     sor.filter (*cloud_filtered);                    //存储
@@ -240,11 +242,10 @@ void pointCloudCallback(const sensor_msgs::PointCloud2::ConstPtr& pc_now) {
     float C = coefficients -> values[2];
     float D = coefficients -> values[3];
     double d = sqrt(A*A + B*B + C*C);
-    double theta = asin(A);
-    double roll  = asin(B);
+    double theta = acos(fabs(C));
 
-    if (A > 0) {theta = PI - theta;}
-    cout<<"theta = "<< (theta * 180 / PI) << "  roll = " << (roll * 180 / PI)  << endl;
+    theta = PI - theta;
+    //cout<<"theta = "<< (theta * 180 / PI)<<endl;
     for(int i = 0 ; i < cloud_filtered -> points.size() ; i++) {
 
         if(  eu_distance(cloud_filtered -> points[i].x,    cloud_filtered -> points[i].y,    cloud_filtered -> points[i].z) < min_lidar_distance){continue;}
@@ -256,16 +257,23 @@ void pointCloudCallback(const sensor_msgs::PointCloud2::ConstPtr& pc_now) {
     // transform the cloud
     pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_rotated (new pcl::PointCloud<pcl::PointXYZ>);
     Eigen::Matrix4f transform = Eigen::Matrix4f::Identity();
-                                                             // z-y-x
-    Eigen::AngleAxisf Rotation_vector_y(theta , Eigen::Vector3f(0,1,0));
-    Eigen::AngleAxisf Rotation_vector_x(-roll , Eigen::Vector3f(0,0,1));
-    Eigen::Matrix3f rotation_matrix = Rotation_vector_y.matrix() * Rotation_vector_x.matrix();
+    Eigen::AngleAxisf Rotation_vector(theta , Eigen::Vector3f(0,1,0));
+    Eigen::Matrix3f rotation_matrix = Rotation_vector.matrix();
     transform.block<3,3>(0,0) = rotation_matrix;
-
 
     pcl::transformPointCloud(*cloud_filtered , *cloud_rotated , transform);
 
-
+    // test theta
+    double test_theta = getPitchFromCloud(cloud_rotated);
+    if (fabs(test_theta) > 0.175) {
+        cout<<" fixed_theta ";
+        theta = PI - theta;
+        Eigen::AngleAxisf Rotation_vector2(theta , Eigen::Vector3f(0,1,0));
+        Eigen::Matrix3f rotation_matrix2 = Rotation_vector2.matrix();
+        transform.block<3,3>(0,0) = rotation_matrix2;
+        cloud_rotated -> clear();
+        pcl::transformPointCloud(*cloud_filtered , *cloud_rotated , transform);
+    }
 
     if (debug_mode) {
         sensor_msgs::PointCloud2 output_pc_rotated, output_pc_filtered ,output_pc_plane;
