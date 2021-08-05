@@ -41,39 +41,35 @@ double max_target_height;
 double d_width;
 double target_lose_distance;
 double vector_length;
-double splash_size = 30;
 bool detect_mode;
 bool debug_mode;
 
 vector<double> tem_x;
 vector<double> tem_y;
 
-class TargetFound {
+public class TargetFound {
 
 public:
     Eigen::Vector3f centroid_coor;
-    Eigen::Vector3f current_point;
     int freq = 0;
     int time_size = 0;
 public:
-    TargetFound(pcl::PointXYZ coor) {
-        centroid_coor << coor.x , coor.y , coor.z;
-        current_point << coor.x , coor.y , coor.z;
+    TargetFound(Eigen::Vector3f coor) {
+        self.centroid_coor = coor;
     }
     void addPoint(Eigen::Vector3f new_point) {
-        centroid_coor = ( freq * centroid_coor + new_point ) / (freq + 1);
-        freq++;
-        if (freq > splash_size) {freq = splash_size;}
-        current_point = new_point;
+        self.centroid_coor = ( self.freq * self.centroid_coor + new_point ) / (self.freq + 1);
+        self.freq++;
+        if (self.freq > 40) {self.freq = 40;}
     }
     void timeAttenuation(){
-        time_size ++;
-        if(time_size % 2 == 0) {
-            freq --;
-            if(freq < 0){freq = 0;}
+        self.time_size ++;
+        if(self.time_size % 2 == 0) {
+            self.freq --;
+            if(self.freq < 0){self.freq = 0;}
         }
     }
-};
+}
 
 vector<TargetFound> targets_manager;
 
@@ -81,15 +77,15 @@ double eu_distance(double x , double y , double z) {
     return sqrt(x*x + y*y + z*z);
 }
 
-void updateTargets(pcl::PointXYZ &coor){
+void updateTargets(Eigen::Vector3f coor){
 
     int index = 0;
     double min_distance = 10000;
     bool is_new_target = true;
     for(int i = 0 ; i < targets_manager.size() ; i++) {
-        double distance = eu_distance( targets_manager[i].centroid_coor[0] - coor.x ,
-                                       targets_manager[i].centroid_coor[1] - coor.y ,
-                                       targets_manager[i].centroid_coor[2] - coor.z );
+        double distance = eu_distance( targets_manager[i].centroid_coor[0] - coor[0] ,
+                                       targets_manager[i].centroid_coor[1] - coor[1] ,
+                                       targets_manager[i].centroid_coor[2] - coor[2] );
         if (distance < min_distance && distance < target_lose_distance) {
             index = i;
             min_distance = distance;
@@ -98,57 +94,16 @@ void updateTargets(pcl::PointXYZ &coor){
         targets_manager[i].timeAttenuation();
     }
     if (is_new_target){
-        targets_manager.push_back(TargetFound(coor));
+        targets_manager.push_back(new TargetFound(coor));
         return ;
     }
     else {
-        targets_manager[index].addPoint(Eigen::Vector3f(coor.x , coor.y , coor.z));
+        targets_manager[index].addPoint(coor);
         return ;
     }
 
 }
 
-void publishTarget() {
-    
-    int index = 0;
-    int max_freq = -10000;
-    geometry_msgs::Twist target;
-    for(int i = 0 ; i < targets_manager.size() ; i++) {
-
-        if (max_freq < targets_manager[i].freq) {
-            index = i;
-            max_freq = targets_manager[i].freq;
-        }
-
-        if (targets_manager[i].freq > 0){
-            cout <<" f: "<<targets_manager[i].freq << "  ";
-        }
-    }
-
-    sensor_msgs::PointCloud2 output_pc ;
-    pcl::PointCloud<pcl::PointXYZ>::Ptr output_cloud (new pcl::PointCloud<pcl::PointXYZ>);
-    pcl::PointXYZ tgt;
-    tgt.x = targets_manager[index].current_point[0];
-    tgt.y = targets_manager[index].current_point[1];
-    tgt.z = targets_manager[index].current_point[2];
-
-    output_cloud -> push_back(tgt);
-
-    pcl::toROSMsg(*output_cloud , output_pc);
-    output_pc.header.frame_id = "livox_frame";
-    output_pc.header.stamp    = ros::Time::now();
-    height_pc_pub.publish(output_pc);
-    
-    target.linear.x = -tgt.x;
-    target.linear.y = -tgt.y;
-    target.linear.z = -tgt.z;
-    target.angular.x = 1;
-
-    target_pub.publish(target);
-
-    cout<<"\npublished!  dx="<< -tgt.x<<" | dy="<< -tgt.y <<" | dz=" << -tgt.z <<endl;
-
-}
 
 void initParams(ros::NodeHandle& n)
 {
@@ -163,7 +118,6 @@ void initParams(ros::NodeHandle& n)
     if(!n.getParam("/highest_pc_node/d_width", d_width)){ ROS_ERROR("Failed to get parameter from server."); }
     if(!n.getParam("/highest_pc_node/target_lose_distance", target_lose_distance)){ ROS_ERROR("Failed to get parameter from server."); }
     if(!n.getParam("/highest_pc_node/vector_length", vector_length)){ ROS_ERROR("Failed to get parameter from server."); }
-    if(!n.getParam("/highest_pc_node/splash_size", splash_size)){ ROS_ERROR("Failed to get parameter from server."); }
     if(!n.getParam("/highest_pc_node/debug_mode", debug_mode)){ ROS_ERROR("Failed to get parameter from server."); }
     if(!n.getParam("/highest_pc_node/detect_mode", detect_mode)){ ROS_ERROR("Failed to get parameter from server."); }
 
@@ -171,7 +125,6 @@ void initParams(ros::NodeHandle& n)
     cout << "check_cloud : " << lidar_topic << "\n\n min_distance : " << min_distance << "\n\n min_lidar_distance : " << min_lidar_distance << endl;
     cout << "frame_tick : " << frame_tick << "\nfilter_neighbor_points : " << neighbor_points << "\nfilter_threshold : " << threshold <<endl;
     cout << "d_width : " << d_width << "\n vector_length : " << vector_length <<"\ntarget_lose_distance : "<< target_lose_distance <<endl;
-    cout << "splash_size : " <<splash_size << endl;
     cout << "max_target_height : " << max_target_height << "\n\n" << "debug_mode : " << debug_mode << "\ndetect_mode: " << detect_mode << endl;
     
     ROS_INFO("\n====highest point detect node init====\n");
@@ -188,11 +141,11 @@ void pointCloudCallback(const sensor_msgs::PointCloud2::ConstPtr& pc_now) {
     pcl::PointCloud<pcl::PointXYZ>::Ptr pc_raw (new pcl::PointCloud<pcl::PointXYZ>);
     pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_plane (new pcl::PointCloud<pcl::PointXYZ>);
     pcl::fromROSMsg( *pc_now, *pc_raw );
+    geometry_msgs::Twist target;
 
 
     double maxdistance = 0 , index = 0;
     double distance = 0;
-    geometry_msgs::Twist target;
 
     /*
     Eigen::Matrix4f transform_pre = Eigen::Matrix4f::Identity();
@@ -286,8 +239,9 @@ void pointCloudCallback(const sensor_msgs::PointCloud2::ConstPtr& pc_now) {
         highest_point = cloud_filtered -> points[index];
     }
 
-    
-    //output_cloud -> push_back(highest_point);
+    sensor_msgs::PointCloud2 output_pc ;
+    pcl::PointCloud<pcl::PointXYZ>::Ptr output_cloud (new pcl::PointCloud<pcl::PointXYZ>);
+    output_cloud -> push_back(highest_point);
     total_frame++ ;
     //drone coordinate
         
@@ -309,7 +263,7 @@ void pointCloudCallback(const sensor_msgs::PointCloud2::ConstPtr& pc_now) {
         if (tem_y.size() > vector_length) {tem_y.erase(tem_y.begin());}
 
 
-        cout <<" smooth_filter.length = " << tem_x.size() <<endl;
+        cout <<" tem_x.length = " << tem_x.size() << " | tem_y.length = "<< tem_y.size() <<endl;
         double sum_x = accumulate(begin(tem_x), end(tem_x), 0.0);  
         double mean_x =  sum_x / tem_x.size(); //均值
         double sum_y = accumulate(begin(tem_y), end(tem_y), 0.0);  
@@ -327,10 +281,25 @@ void pointCloudCallback(const sensor_msgs::PointCloud2::ConstPtr& pc_now) {
 
     p_drone.z = hp_coor_d[2];
 
-    updateTargets(p_drone);
-    publishTarget();
+    output_cloud -> push_back(p_drone);
+
+    pcl::toROSMsg(*output_cloud , output_pc);
+    output_pc.header.frame_id = "livox_frame";
+    output_pc.header.stamp    = ros::Time::now();
+
+    height_pc_pub.publish(output_pc);
+    
+    target.linear.x = -p_drone.x;
+    target.linear.y = -p_drone.y;
+    target.linear.z = -p_drone.z;
+    target.angular.x = 1;
+    target.angular.z = -D/d;
 
 
+    target_pub.publish(target);
+
+
+    cout<<"\npublished!  dx="<< -p_drone.x <<" | dy="<< -p_drone.y <<" | dz=" << -p_drone.z <<endl;
 
 }
 

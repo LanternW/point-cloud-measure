@@ -57,5 +57,11 @@ vector_length : 10
 # 距离测量方式 （ false - 使用雷达点云拟合平面 ； true - 使用飞机imu直接读取姿态 ）
 detect_mode : false
 
+# 目标丢失距离阈值‘
+target_lose_distance : 4.0
+
+# 目标跟踪粘性缓存区大小 (值越大，越不容易跳，但是目标丢失后重新跟踪所需时间越长)
+splash_size : 30
+
 # 开启测试模式，会输出便于调试的中间结果，但是会额外占用性能
 debug_mode : true
