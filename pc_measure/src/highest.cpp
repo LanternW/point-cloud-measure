@@ -177,7 +177,7 @@ void initParams(ros::NodeHandle& n)
     ROS_INFO("\n====highest point detect node init====\n");
 }
 
-
+// not used
 double getPitchFromCloud(pcl::PointCloud<pcl::PointXYZ>::Ptr point_cloud) {
 
     pcl::ModelCoefficients::Ptr coefficients (new pcl::ModelCoefficients);
@@ -228,22 +228,22 @@ void pointCloudCallback(const sensor_msgs::PointCloud2::ConstPtr& pc_now) {
     }
 
     //统计滤波
-    pcl::StatisticalOutlierRemoval<pcl::PointXYZ> sor;   //创建滤波器对象
+    pcl::StatisticalOutlierRemoval<pcl::PointXYZ> sor;       //创建滤波器对象
     pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_filtered (new pcl::PointCloud<pcl::PointXYZ>);  
-    sor.setInputCloud (pc_raw);                           //设置待滤波的点云
-    sor.setMeanK (neighbor_points);                               //设置在进行统计时考虑查询点临近点数
+    sor.setInputCloud (pc_raw);                              //设置待滤波的点云
+    sor.setMeanK (neighbor_points);                          //设置在进行统计时考虑查询点临近点数
     sor.setStddevMulThresh (threshold);                      //设置判断是否为离群点的阀值
-    sor.filter (*cloud_filtered);                    //存储
+    sor.filter (*cloud_filtered);                            //存储
 
     float A = coefficients -> values[0];
     float B = coefficients -> values[1];
     float C = coefficients -> values[2];
     float D = coefficients -> values[3];
     double d = sqrt(A*A + B*B + C*C);
-    double theta = asin(A);
+    double theta = asin(fabs(A));
     double roll  = asin(B);
 
-    if (A > 0) {theta = PI - theta;}
+    if (C > 0) {theta = PI - theta;}
     cout<<"theta = "<< (theta * 180 / PI) << "  roll = " << (roll * 180 / PI)  << endl;
     for(int i = 0 ; i < cloud_filtered -> points.size() ; i++) {
 
@@ -301,22 +301,20 @@ void pointCloudCallback(const sensor_msgs::PointCloud2::ConstPtr& pc_now) {
     }
 
     
-    //output_cloud -> push_back(highest_point);
     total_frame++ ;
     //drone coordinate
         
     Eigen::Vector4f hp_coor, hp_coor_last ,hp_coor_current_target;
-    hp_coor << highest_point.x , highest_point.y , highest_point.z , 1;
+    hp_coor      << highest_point.x , highest_point.y , highest_point.z , 1;
     hp_coor_last << last_highest_point.x , last_highest_point.y , last_highest_point.z , 1;
-    Eigen::Vector4f hp_coor_d = transform * hp_coor;
+    Eigen::Vector4f hp_coor_d      = transform * hp_coor;
     Eigen::Vector4f hp_coor_d_last = transform * hp_coor_last;
     pcl::PointXYZ p_drone;
 
 
     //滤钢轨差异
     if (fabs(hp_coor_d_last[0] - hp_coor_d[0]) < d_width && fabs(hp_coor_d_last[1] - hp_coor_d[1]) < d_width) { 
-
-            
+        
         tem_x.push_back(hp_coor_d[0]);
         tem_y.push_back(hp_coor_d[1]);
         if (tem_x.size() > vector_length) {tem_x.erase(tem_x.begin());}
@@ -344,11 +342,9 @@ void pointCloudCallback(const sensor_msgs::PointCloud2::ConstPtr& pc_now) {
     updateTargets(p_drone);
     publishTarget();
 
-
-
 }
 
-//驴肉火烧
+//MAIN
 int main(int argc, char** argv)
 {
     ros::init(argc, argv, "highest_exactor_node");
