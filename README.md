@@ -17,3 +17,7 @@ roslaunch pc_measure highest.cpp
 ————
 
 对横滚角进行补偿，target在y轴的距离变得更稳定
+
+————
+
+修复了雷达pitch角度跨越90度前后雷达姿态估计有误的bug
